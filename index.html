@@ -42,11 +42,11 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
-            overflow: hidden; /* Masaüstünde kaydırma olmasın, paneller kendi içinde kaysın */
+            overflow: hidden;
             transition: background-color 0.3s, color 0.3s;
         }
 
-        /* Üst Bar (Navbar) */
+        /* Navbar */
         .navbar {
             height: 70px;
             background-color: var(--bg-panel);
@@ -80,7 +80,7 @@
             align-items: center;
         }
 
-        /* Adres Kopyalama Alanı */
+        /* Adres Kutusu */
         .address-box {
             display: flex;
             align-items: center;
@@ -120,7 +120,7 @@
         .btn-icon:hover { background: var(--bg-hover); color: var(--text-main); }
         .btn-success { background: var(--success); color: white; padding: 10px 16px; }
 
-        /* Ana İçerik (Split Pane) */
+        /* Main Container */
         .main-container {
             display: flex;
             flex: 1;
@@ -161,9 +161,8 @@
             background-color: var(--bg-hover);
         }
 
-        .email-sender { font-weight: 600; margin-bottom: 4px; font-size: 0.95rem; }
+        .email-sender { font-weight: 600; margin-bottom: 4px; font-size: 0.95rem; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;}
         .email-subject { font-size: 0.9rem; color: var(--text-main); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .email-preview { font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .email-date { font-size: 0.75rem; color: var(--text-muted); float: right; }
 
         /* Sağ Panel: E-posta Okuyucu */
@@ -190,15 +189,14 @@
         
         .msg-header { border-bottom: 1px solid var(--border-color); padding-bottom: 24px; margin-bottom: 24px; }
         .msg-subject { font-size: 1.5rem; font-weight: 700; margin-bottom: 16px; }
-        .msg-info { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.9rem; }
-        .msg-sender-bold { color: var(--text-main); font-weight: 600; }
+        .msg-info { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.9rem; flex-wrap: wrap; gap: 8px;}
+        .msg-sender-bold { color: var(--text-main); font-weight: 600; word-break: break-all;}
         
-        .msg-body { line-height: 1.6; font-size: 1rem; color: var(--text-main); word-wrap: break-word; }
+        .msg-body { line-height: 1.6; font-size: 1rem; color: var(--text-main); word-wrap: break-word; overflow-x: auto;}
         
-        /* Güvenlik: Dışarıdan gelen HTML içindeki arka planları düzeltme */
-        .msg-body * { max-width: 100% !important; }
+        .msg-body * { max-width: 100% !important; height: auto !important;}
 
-        /* Bildirim (Toast) */
+        /* Bildirim */
         .toast {
             position: fixed;
             bottom: 24px;
@@ -217,12 +215,20 @@
 
         /* Mobil Uyumluluk */
         @media (max-width: 768px) {
-            .navbar { flex-direction: column; height: auto; padding: 16px; gap: 16px; }
+            .navbar { flex-direction: column; height: auto; padding: 16px; gap: 16px; align-items: flex-start;}
+            .brand { order: -1; }
+            .address-box { width: 100%; order: 1; justify-content: space-between;}
+            .address-input { width: 60%; font-size: 0.9rem;}
+            .btn-primary#copyBtn { padding: 8px 12px; font-size: 0.9rem;}
+            .actions { width: 100%; justify-content: space-between;}
+
             .main-container { flex-direction: column; }
             .inbox-sidebar { width: 100%; height: 40%; border-right: none; border-bottom: 1px solid var(--border-color); }
             .email-reader { height: 60%; }
-            .address-box { width: 100%; }
-            .address-input { width: 100%; }
+            .sidebar-header { padding: 12px;}
+            .email-item { padding: 12px;}
+            .message-content { padding: 20px;}
+            .msg-subject { font-size: 1.25rem;}
         }
         
         .loading-spinner {
@@ -284,12 +290,12 @@
                 <div class="msg-header">
                     <div class="msg-subject" id="msgSubject">Konu Yükleniyor...</div>
                     <div class="msg-info">
-                        <div>Kimden: <span class="msg-sender-bold" id="msgFrom">gonderen@mail.com</span></div>
-                        <div id="msgDate">Tarih</div>
+                        <div>Kimden: <span class="msg-sender-bold" id="msgFrom">...</span></div>
+                        <div id="msgDate">...</div>
                     </div>
                 </div>
                 <div class="msg-body" id="msgBody">
-                    İçerik yükleniyor...
+                    <div class="loading-spinner"></div> İçerik yükleniyor...
                 </div>
             </div>
         </section>
@@ -299,7 +305,6 @@
     <div class="toast" id="toast">İşlem başarılı!</div>
 
     <script>
-        // API Tanımlamaları
         const API_URL = "https://www.1secmail.com/api/v1/";
         let currentLogin = "";
         let currentDomain = "";
@@ -307,15 +312,15 @@
         let knownMessageIds = new Set();
         let pollingInterval = null;
 
-        // Başlangıç Fonksiyonları
         window.onload = async () => {
             initTheme();
             await generateNewEmail();
         };
 
-        // Yeni Gerçek E-posta Üretme
+        // Yeni E-posta Adresi Oluşturma (Sabitlendi ve Hata Kontrolü Eklendi)
         async function generateNewEmail() {
             clearInterval(pollingInterval);
+            pollingInterval = null; // Eski interval'ı temizle
             document.getElementById('emailAddress').value = "Adres alınıyor...";
             document.getElementById('inboxList').innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">E-posta bekleniyor...</div>`;
             document.getElementById('mailCount').textContent = "(0)";
@@ -323,9 +328,12 @@
             closeMessage();
 
             try {
-                // 1secmail'den rastgele 1 adet adres iste
+                // Rastgele adres iste
                 const response = await fetch(`${API_URL}?action=genRandomMailbox&count=1`);
+                if (!response.ok) throw new Error("API hatası"); // API yanıtını kontrol et
+                
                 const data = await response.json();
+                if (!data || !data[0]) throw new Error("Veri hatası");
                 
                 currentEmail = data[0];
                 const parts = currentEmail.split('@');
@@ -335,46 +343,50 @@
                 document.getElementById('emailAddress').value = currentEmail;
                 showToast("Yeni adres oluşturuldu!");
 
-                // Gelen kutusunu her 5 saniyede bir kontrol et
-                checkInbox();
-                pollingInterval = setInterval(checkInbox, 5000);
+                // Gelen kutusunu dinlemeye başla
+                await checkInbox(); // Hemen bir kez kontrol et
+                pollingInterval = setInterval(checkInbox, 5000); // Sonra her 5 saniyede bir
 
             } catch (error) {
                 console.error("Mail alınamadı:", error);
                 document.getElementById('emailAddress').value = "Bağlantı hatası!";
+                document.getElementById('inboxList').innerHTML = `<div style="padding: 24px; text-align: center; color: #ef4444; font-size: 0.9rem;">Adres alınamadı. Lütfen daha sonra tekrar deneyin veya sayfayı yenileyin.</div>`;
             }
         }
 
-        // Gelen Kutusunu Kontrol Et
+        // Gelen Kutusunu Kontrol Etme (Hata Kontrolü Eklendi)
         async function checkInbox() {
-            if (!currentLogin || !currentDomain) return;
+            if (!currentLogin || !currentDomain || !pollingInterval) return;
 
             try {
                 const response = await fetch(`${API_URL}?action=getMessages&login=${currentLogin}&domain=${currentDomain}`);
+                if (!response.ok) throw new Error("Inbox hatası");
+
                 const messages = await response.json();
+                if (!Array.isArray(messages)) throw new Error("Geçersiz inbox verisi");
                 
                 document.getElementById('mailCount').textContent = `(${messages.length})`;
 
-                // Yeni mesaj var mı kontrolü
                 let hasNewMessage = false;
                 
+                const listContainer = document.getElementById('inboxList');
+                if (knownMessageIds.size === 0 && messages.length === 0) {
+                    listContainer.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">E-posta bekleniyor...<br><br>Bu adrese mail atarak test edebilirsiniz.</div>`;
+                }
+
                 if (messages.length > 0) {
-                    const listContainer = document.getElementById('inboxList');
-                    
-                    // Sadece ilk yüklemede temizle
-                    if (knownMessageIds.size === 0) listContainer.innerHTML = '';
+                    if (knownMessageIds.size === 0) listContainer.innerHTML = ''; // İlk yüklemede simülasyon metnini sil
 
                     messages.forEach(msg => {
                         if (!knownMessageIds.has(msg.id)) {
                             knownMessageIds.add(msg.id);
                             hasNewMessage = true;
                             
-                            // Yeni mesajı listeye ekle
                             const div = document.createElement('div');
                             div.className = 'email-item';
                             div.onclick = () => loadMessage(msg.id, div);
+                            div.dataset.msgId = msg.id; // Sonradan aktiflik kontrolü için
                             
-                            // Tarih formatlama
                             const dateObj = new Date(msg.date);
                             const timeStr = dateObj.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
@@ -384,7 +396,6 @@
                                 <div class="email-subject">${escapeHTML(msg.subject) || "(Konu yok)"}</div>
                             `;
                             
-                            // En üste ekle
                             listContainer.insertBefore(div, listContainer.firstChild);
                         }
                     });
@@ -396,23 +407,23 @@
             }
         }
 
-        // Seçilen Mesajı Getir ve Oku
+        // Seçilen Mesajı Getirip Okuma (HTML renderer düzeltildi)
         async function loadMessage(msgId, element) {
-            // Aktif sınıfını ayarla
             document.querySelectorAll('.email-item').forEach(el => el.classList.remove('active'));
             if(element) element.classList.add('active');
 
-            // Panelleri ayarla
             document.getElementById('readerPlaceholder').style.display = 'none';
             document.getElementById('messageContent').style.display = 'block';
             
-            // Yükleniyor durumu
-            document.getElementById('msgSubject').innerHTML = '<div class="loading-spinner"></div> Yükleniyor...';
+            document.getElementById('msgSubject').innerHTML = '<div class="loading-spinner"></div> Konu yükleniyor...';
             document.getElementById('msgFrom').textContent = "...";
-            document.getElementById('msgBody').innerHTML = "";
+            document.getElementById('msgDate').textContent = "...";
+            document.getElementById('msgBody').innerHTML = '<div class="loading-spinner"></div> İçerik yükleniyor...';
 
             try {
                 const response = await fetch(`${API_URL}?action=readMessage&login=${currentLogin}&domain=${currentDomain}&id=${msgId}`);
+                if (!response.ok) throw new Error("Mesaj okuma hatası");
+
                 const msgData = await response.json();
 
                 document.getElementById('msgSubject').textContent = msgData.subject || "(Konu yok)";
@@ -421,15 +432,19 @@
                 const dateObj = new Date(msgData.date);
                 document.getElementById('msgDate').textContent = dateObj.toLocaleString('tr-TR');
 
-                // HTML formatı varsa onu, yoksa düz metni göster
                 if (msgData.htmlBody) {
+                    // HTML mail ise direkt renderla
                     document.getElementById('msgBody').innerHTML = msgData.htmlBody;
-                } else {
-                    // Düz metni HTML satır sonlarına çevir
+                } else if (msgData.textBody) {
+                    // Düz metin mail ise satır sonlarını düzelt
                     document.getElementById('msgBody').innerHTML = escapeHTML(msgData.textBody).replace(/\n/g, '<br>');
+                } else {
+                    document.getElementById('msgBody').innerHTML = "<span style='color:var(--text-muted); italic'>Bu mesajın içeriği yok.</span>";
                 }
             } catch (error) {
-                document.getElementById('msgBody').innerHTML = "<span style='color:red;'>Mesaj içeriği yüklenirken hata oluştu.</span>";
+                console.error("Mesaj yükleme hatası:", error);
+                document.getElementById('msgSubject').textContent = "Hata!";
+                document.getElementById('msgBody').innerHTML = "<span style='color:#ef4444;'>Mesaj içeriği yüklenirken bir hata oluştu. Lütfen tekrar deneyin.</span>";
             }
         }
 
@@ -438,7 +453,6 @@
             document.getElementById('messageContent').style.display = 'none';
         }
 
-        // Kopyalama Aracı
         function copyEmail() {
             const copyText = document.getElementById("emailAddress");
             copyText.select();
@@ -452,24 +466,17 @@
             btn.classList.remove('btn-primary');
             
             setTimeout(() => {
-                btn.textContent = "Kopyala";
+                btn.textContent = originalText;
                 btn.classList.remove('btn-success');
                 btn.classList.add('btn-primary');
             }, 2000);
         }
 
-        // Yardımcı Fonksiyonlar
         function escapeHTML(str) {
             if (!str) return "";
-            return str.replace(/[&<>'"]/g, 
-                tag => ({
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    "'": '&#39;',
-                    '"': '&quot;'
-                }[tag] || tag)
-            );
+            return str.replace(/[&<>'"]/g, tag => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            }[tag] || tag));
         }
 
         function showToast(msg) {
@@ -479,7 +486,6 @@
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
-        // Tema Yönetimi (Dark/Light)
         function initTheme() {
             const savedTheme = localStorage.getItem('theme') || 'dark';
             document.documentElement.setAttribute('data-theme', savedTheme);
