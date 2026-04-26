@@ -127,7 +127,7 @@
             overflow: hidden;
         }
 
-        /* Sol Panel: Gelen Kutusu Listesi */
+        /* Sol Panel */
         .inbox-sidebar {
             width: 350px;
             background-color: var(--bg-panel);
@@ -165,7 +165,7 @@
         .email-subject { font-size: 0.9rem; color: var(--text-main); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .email-date { font-size: 0.75rem; color: var(--text-muted); float: right; }
 
-        /* Sağ Panel: E-posta Okuyucu */
+        /* Sağ Panel */
         .email-reader {
             flex: 1;
             background-color: var(--bg-body);
@@ -193,7 +193,6 @@
         .msg-sender-bold { color: var(--text-main); font-weight: 600; word-break: break-all;}
         
         .msg-body { line-height: 1.6; font-size: 1rem; color: var(--text-main); word-wrap: break-word; overflow-x: auto;}
-        
         .msg-body * { max-width: 100% !important; height: auto !important;}
 
         /* Bildirim */
@@ -305,7 +304,7 @@
     <div class="toast" id="toast">İşlem başarılı!</div>
 
     <script>
-        const API_URL = "https://www.1secmail.com/api/v1/";
+        const BASE_API = "https://www.1secmail.com/api/v1/";
         let currentLogin = "";
         let currentDomain = "";
         let currentEmail = "";
@@ -317,10 +316,28 @@
             await generateNewEmail();
         };
 
-        // Yeni E-posta Adresi Oluşturma (Sabitlendi ve Hata Kontrolü Eklendi)
+        // GÜÇLENDİRİLMİŞ FETCH FONKSİYONU: Önce direkt dener, engellenirse Proxy üzerinden istek atar.
+        async function safeFetch(params) {
+            // Önbelleğe alınmayı engellemek için url sonuna rastgele zaman damgası ekliyoruz
+            const url = BASE_API + params + "&_=" + new Date().getTime();
+            
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error("Direct fetch blocked");
+                return await response.json();
+            } catch (error) {
+                console.warn("CORS veya Reklam Engelleyici saptandı, Proxy üzerinden bağlanılıyor...");
+                // CORS hatası alırsak güvenli AllOrigins proxy'si kullanıyoruz.
+                const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+                const proxyResponse = await fetch(proxyUrl);
+                if (!proxyResponse.ok) throw new Error("Proxy fetch failed");
+                return await proxyResponse.json();
+            }
+        }
+
         async function generateNewEmail() {
             clearInterval(pollingInterval);
-            pollingInterval = null; // Eski interval'ı temizle
+            pollingInterval = null; 
             document.getElementById('emailAddress').value = "Adres alınıyor...";
             document.getElementById('inboxList').innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted);">E-posta bekleniyor...</div>`;
             document.getElementById('mailCount').textContent = "(0)";
@@ -328,11 +345,8 @@
             closeMessage();
 
             try {
-                // Rastgele adres iste
-                const response = await fetch(`${API_URL}?action=genRandomMailbox&count=1`);
-                if (!response.ok) throw new Error("API hatası"); // API yanıtını kontrol et
+                const data = await safeFetch('?action=genRandomMailbox&count=1');
                 
-                const data = await response.json();
                 if (!data || !data[0]) throw new Error("Veri hatası");
                 
                 currentEmail = data[0];
@@ -343,39 +357,34 @@
                 document.getElementById('emailAddress').value = currentEmail;
                 showToast("Yeni adres oluşturuldu!");
 
-                // Gelen kutusunu dinlemeye başla
-                await checkInbox(); // Hemen bir kez kontrol et
-                pollingInterval = setInterval(checkInbox, 5000); // Sonra her 5 saniyede bir
+                await checkInbox();
+                pollingInterval = setInterval(checkInbox, 5000);
 
             } catch (error) {
-                console.error("Mail alınamadı:", error);
-                document.getElementById('emailAddress').value = "Bağlantı hatası!";
-                document.getElementById('inboxList').innerHTML = `<div style="padding: 24px; text-align: center; color: #ef4444; font-size: 0.9rem;">Adres alınamadı. Lütfen daha sonra tekrar deneyin veya sayfayı yenileyin.</div>`;
+                console.error("Adres alınamadı:", error);
+                document.getElementById('emailAddress').value = "Sunucu hatası!";
+                document.getElementById('inboxList').innerHTML = `<div style="padding: 24px; text-align: center; color: #ef4444; font-size: 0.9rem;">Bağlantı engellendi. Reklam engelleyicinizi (AdBlock/Brave Shields) bu site için kapatıp sayfayı yenileyin.</div>`;
             }
         }
 
-        // Gelen Kutusunu Kontrol Etme (Hata Kontrolü Eklendi)
         async function checkInbox() {
             if (!currentLogin || !currentDomain || !pollingInterval) return;
 
             try {
-                const response = await fetch(`${API_URL}?action=getMessages&login=${currentLogin}&domain=${currentDomain}`);
-                if (!response.ok) throw new Error("Inbox hatası");
-
-                const messages = await response.json();
-                if (!Array.isArray(messages)) throw new Error("Geçersiz inbox verisi");
+                const messages = await safeFetch(`?action=getMessages&login=${currentLogin}&domain=${currentDomain}`);
+                if (!Array.isArray(messages)) return;
                 
                 document.getElementById('mailCount').textContent = `(${messages.length})`;
 
                 let hasNewMessage = false;
-                
                 const listContainer = document.getElementById('inboxList');
+                
                 if (knownMessageIds.size === 0 && messages.length === 0) {
                     listContainer.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">E-posta bekleniyor...<br><br>Bu adrese mail atarak test edebilirsiniz.</div>`;
                 }
 
                 if (messages.length > 0) {
-                    if (knownMessageIds.size === 0) listContainer.innerHTML = ''; // İlk yüklemede simülasyon metnini sil
+                    if (knownMessageIds.size === 0) listContainer.innerHTML = ''; 
 
                     messages.forEach(msg => {
                         if (!knownMessageIds.has(msg.id)) {
@@ -385,7 +394,6 @@
                             const div = document.createElement('div');
                             div.className = 'email-item';
                             div.onclick = () => loadMessage(msg.id, div);
-                            div.dataset.msgId = msg.id; // Sonradan aktiflik kontrolü için
                             
                             const dateObj = new Date(msg.date);
                             const timeStr = dateObj.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -403,11 +411,10 @@
                     if (hasNewMessage) showToast("📨 Yeni bir e-posta geldi!");
                 }
             } catch (error) {
-                console.error("Inbox kontrol hatası:", error);
+                console.error("Gelen kutusu kontrol edilemedi:", error);
             }
         }
 
-        // Seçilen Mesajı Getirip Okuma (HTML renderer düzeltildi)
         async function loadMessage(msgId, element) {
             document.querySelectorAll('.email-item').forEach(el => el.classList.remove('active'));
             if(element) element.classList.add('active');
@@ -421,10 +428,7 @@
             document.getElementById('msgBody').innerHTML = '<div class="loading-spinner"></div> İçerik yükleniyor...';
 
             try {
-                const response = await fetch(`${API_URL}?action=readMessage&login=${currentLogin}&domain=${currentDomain}&id=${msgId}`);
-                if (!response.ok) throw new Error("Mesaj okuma hatası");
-
-                const msgData = await response.json();
+                const msgData = await safeFetch(`?action=readMessage&login=${currentLogin}&domain=${currentDomain}&id=${msgId}`);
 
                 document.getElementById('msgSubject').textContent = msgData.subject || "(Konu yok)";
                 document.getElementById('msgFrom').textContent = msgData.from;
@@ -433,18 +437,16 @@
                 document.getElementById('msgDate').textContent = dateObj.toLocaleString('tr-TR');
 
                 if (msgData.htmlBody) {
-                    // HTML mail ise direkt renderla
                     document.getElementById('msgBody').innerHTML = msgData.htmlBody;
                 } else if (msgData.textBody) {
-                    // Düz metin mail ise satır sonlarını düzelt
                     document.getElementById('msgBody').innerHTML = escapeHTML(msgData.textBody).replace(/\n/g, '<br>');
                 } else {
                     document.getElementById('msgBody').innerHTML = "<span style='color:var(--text-muted); italic'>Bu mesajın içeriği yok.</span>";
                 }
             } catch (error) {
-                console.error("Mesaj yükleme hatası:", error);
+                console.error("Mesaj okunamadı:", error);
                 document.getElementById('msgSubject').textContent = "Hata!";
-                document.getElementById('msgBody').innerHTML = "<span style='color:#ef4444;'>Mesaj içeriği yüklenirken bir hata oluştu. Lütfen tekrar deneyin.</span>";
+                document.getElementById('msgBody').innerHTML = "<span style='color:#ef4444;'>Mesaj yüklenemedi. Bağlantınızı kontrol edin.</span>";
             }
         }
 
